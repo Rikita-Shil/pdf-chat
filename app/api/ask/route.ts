@@ -1,7 +1,9 @@
-import { GoogleGenAI } from "@google/genai";
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+import { GoogleGenAI } from "@google/genai";
+
+
 
 type AskRequestBody = {
   question?: unknown;
