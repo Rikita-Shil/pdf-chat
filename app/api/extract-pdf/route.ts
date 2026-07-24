@@ -1,7 +1,9 @@
-import { PDFParse } from "pdf-parse";
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+
+import { PDFParse } from "pdf-parse";
+
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
