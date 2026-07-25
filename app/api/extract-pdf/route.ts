@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 
+import { CanvasFactory } from "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 
 
@@ -42,11 +43,12 @@ export async function POST(request: Request) {
     const arrayBuffer = await uploadedFile.arrayBuffer();
 
     parser = new PDFParse({
-      data: new Uint8Array(arrayBuffer),
-      useWorkerFetch: false,
-      isEvalSupported: false,
-      useSystemFonts: true,
-    });
+  data: new Uint8Array(arrayBuffer),
+  CanvasFactory,
+  useWorkerFetch: false,
+  isEvalSupported: false,
+  useSystemFonts: true,
+});
 
     const result = await parser.getText();
 
