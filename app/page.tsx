@@ -1,15 +1,24 @@
 "use client";
 
 import {
+  AlertCircle,
+  Bot,
+  CheckCircle2,
   FileText,
   LoaderCircle,
   Plus,
   Send,
+  Sparkles,
   Trash2,
   Upload,
+  UserRound,
 } from "lucide-react";
-import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
-import { useRef, useState } from "react";
+import type {
+  ChangeEvent,
+  FormEvent,
+  KeyboardEvent,
+} from "react";
+import { useEffect, useRef, useState } from "react";
 
 type DocumentStatus = "processing" | "ready" | "error";
 
@@ -36,17 +45,18 @@ type ExtractPdfResponse = {
   characterCount?: number;
   error?: string;
 };
+
 type AskPdfResponse = {
   answer?: string;
   error?: string;
 };
 
 const initialDocuments: PdfDocument[] = [];
-
 const initialMessages: Message[] = [];
 
 export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [documents, setDocuments] =
     useState<PdfDocument[]>(initialDocuments);
@@ -64,6 +74,15 @@ export default function Home() {
     (document) => document.id === selectedDocumentId
   );
 
+  const canAskQuestion =
+    selectedDocument?.status === "ready";
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [messages, isAnswering]);
+
   function formatFileSize(bytes: number): string {
     if (bytes < 1024) {
       return `${bytes} bytes`;
@@ -79,9 +98,10 @@ export default function Home() {
   async function handleFileSelection(
     event: ChangeEvent<HTMLInputElement>
   ) {
-    const selectedFiles = Array.from(event.target.files ?? []);
+    const selectedFiles = Array.from(
+      event.target.files ?? []
+    );
 
-    // Allows the same file to be selected again later.
     event.target.value = "";
 
     if (selectedFiles.length === 0) {
@@ -133,7 +153,7 @@ export default function Home() {
         {
           id: Date.now(),
           role: "assistant",
-          content: `Extracting text from ${file.name}...`,
+          content: `I’m reading ${file.name} and extracting its text now.`,
         },
       ]);
 
@@ -165,24 +185,24 @@ export default function Home() {
           );
         }
 
-        setDocuments((currentDocuments) =>
-          currentDocuments.map((document) =>
-            document.id === documentId
-              ? {
-                  ...document,
-                  pages: result.pageCount ?? 0,
-                  text: result.text ?? "",
-                  status: "ready",
-                }
-              : document
-          )
-        );
+            setDocuments((currentDocuments) =>
+              currentDocuments.map((document) =>
+                document.id === documentId
+                  ? {
+                      ...document,
+                      pages: result.pageCount,
+                      text: result.text,
+                      status: "ready",
+                    }
+                  : document
+              )
+            );
 
         setMessages([
           {
             id: Date.now(),
             role: "assistant",
-            content: `Your PDF is ready. I extracted ${result.characterCount.toLocaleString()} characters from ${result.pageCount} pages.`,
+            content: `${file.name} is ready. I extracted ${result.characterCount.toLocaleString()} characters from ${result.pageCount} pages. Ask me anything about this document.`,
           },
         ]);
       } catch (error) {
@@ -214,97 +234,91 @@ export default function Home() {
   }
 
   async function handleQuestionSubmit(
-  event: FormEvent<HTMLFormElement>
-) {
-  event.preventDefault();
-
-  const trimmedQuestion = question.trim();
-
-  if (
-    !trimmedQuestion ||
-    !selectedDocument ||
-    selectedDocument.status !== "ready" ||
-    !selectedDocument.text ||
-    isAnswering
+    event: FormEvent<HTMLFormElement>
   ) {
-    return;
-  }
- 
+    event.preventDefault();
 
-  const userMessage: Message = {
-    id: Date.now(),
-    role: "user",
-    content: trimmedQuestion,
-  };
+    const trimmedQuestion = question.trim();
 
-  setMessages((currentMessages) => [
-    ...currentMessages,
-    userMessage,
-  ]);
-
-  setQuestion("");
-  setIsAnswering(true);
-
-  try {
-    const response = await fetch("/api/ask", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        question: trimmedQuestion,
-        documentText: selectedDocument.text,
-        documentName: selectedDocument.name,
-      }),
-    });
-
-    const result =
-      (await response.json()) as AskPdfResponse;
-
-    if (!response.ok) {
-      throw new Error(
-        result.error ??
-          "The question could not be answered."
-      );
+    if (
+      !trimmedQuestion ||
+      !selectedDocument ||
+      selectedDocument.status !== "ready" ||
+      !selectedDocument.text ||
+      isAnswering
+    ) {
+      return;
     }
 
-    if (!result.answer) {
-      throw new Error(
-        "The AI returned an empty answer."
-      );
-    }
-
-    const assistantMessage: Message = {
-      id: Date.now() + 1,
-      role: "assistant",
-      content: result.answer,
+    const userMessage: Message = {
+      id: Date.now(),
+      role: "user",
+      content: trimmedQuestion,
     };
 
     setMessages((currentMessages) => [
       ...currentMessages,
-      assistantMessage,
+      userMessage,
     ]);
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error
-        ? error.message
-        : "The question could not be answered.";
 
-    const assistantErrorMessage: Message = {
-      id: Date.now() + 1,
-      role: "assistant",
-      content: errorMessage,
-    };
+    setQuestion("");
+    setIsAnswering(true);
 
-    setMessages((currentMessages) => [
-      ...currentMessages,
-      assistantErrorMessage,
-    ]);
-  } finally {
-    setIsAnswering(false);
+    try {
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: trimmedQuestion,
+          documentText: selectedDocument.text,
+          documentName: selectedDocument.name,
+        }),
+      });
+
+      const result =
+        (await response.json()) as AskPdfResponse;
+
+      if (!response.ok) {
+        throw new Error(
+          result.error ??
+            "The question could not be answered."
+        );
+      }
+
+      if (!result.answer) {
+        throw new Error("The AI returned an empty answer.");
+      }
+
+      const assistantMessage: Message = {
+        id: Date.now() + 1,
+        role: "assistant",
+        content: result.answer,
+      };
+
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        assistantMessage,
+      ]);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "The question could not be answered.";
+
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: Date.now() + 1,
+          role: "assistant",
+          content: errorMessage,
+        },
+      ]);
+    } finally {
+      setIsAnswering(false);
+    }
   }
-}
-
 
   function handleQuestionKeyDown(
     event: KeyboardEvent<HTMLTextAreaElement>
@@ -331,10 +345,9 @@ export default function Home() {
         {
           id: Date.now(),
           role: "assistant",
-          content: `Text is still being extracted from ${document.name}.`,
+          content: `I’m still extracting text from ${document.name}.`,
         },
       ]);
-
       return;
     }
 
@@ -344,10 +357,9 @@ export default function Home() {
           id: Date.now(),
           role: "assistant",
           content:
-            "This PDF could not be processed. Delete it and try uploading it again.",
+            "This PDF could not be processed. Delete it and upload it again.",
         },
       ]);
-
       return;
     }
 
@@ -355,7 +367,7 @@ export default function Home() {
       {
         id: Date.now(),
         role: "assistant",
-        content: `${document.name} is ready. Ask a question about this document.`,
+        content: `${document.name} is selected and ready. What would you like to know?`,
       },
     ]);
   }
@@ -379,7 +391,7 @@ export default function Home() {
             role: "assistant",
             content:
               nextDocument.status === "ready"
-                ? `${nextDocument.name} is selected. Ask a question about it.`
+                ? `${nextDocument.name} is now selected.`
                 : `Selected ${nextDocument.name}.`,
           },
         ]);
@@ -389,12 +401,36 @@ export default function Home() {
     }
   }
 
-  const canAskQuestion =
-    selectedDocument?.status === "ready";
+  function renderStatus(document: PdfDocument) {
+    if (document.status === "processing") {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
+          <LoaderCircle size={13} className="animate-spin" />
+          Reading
+        </span>
+      );
+    }
+
+    if (document.status === "error") {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600">
+          <AlertCircle size={13} />
+          Failed
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+        <CheckCircle2 size={13} />
+        Ready
+      </span>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-3 sm:p-6">
-      <section className="mx-auto flex min-h-[calc(100vh-24px)] max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:min-h-[calc(100vh-48px)]">
+    <main className="min-h-screen bg-slate-950 p-0 sm:p-5">
+      <section className="mx-auto flex min-h-screen max-w-[1500px] flex-col overflow-hidden bg-white sm:min-h-[calc(100vh-40px)] sm:rounded-3xl sm:border sm:border-slate-800 sm:shadow-2xl">
         <input
           ref={fileInputRef}
           type="file"
@@ -404,69 +440,79 @@ export default function Home() {
           className="hidden"
         />
 
-        <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">
-              PDF Chat AI
-            </h1>
+        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 sm:px-7">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white">
+              <Sparkles size={21} />
+            </div>
 
-            <p className="text-sm text-slate-500">
-              Upload a PDF and ask questions about it
-            </p>
+            <div>
+              <h1 className="text-lg font-bold text-slate-950 sm:text-xl">
+                PDF Chat AI
+              </h1>
+
+              <p className="text-xs text-slate-500 sm:text-sm">
+                Chat naturally with your documents
+              </p>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+            className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
           >
             <Upload size={17} />
-
-            <span className="hidden sm:inline">
-              Upload PDF
-            </span>
+            <span className="hidden sm:inline">Upload PDF</span>
           </button>
         </header>
 
-        <div className="grid flex-1 grid-cols-1 md:grid-cols-[300px_1fr]">
-          <aside className="border-b border-slate-200 bg-slate-50 p-4 md:border-b-0 md:border-r">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-slate-900">
-                  Documents
-                </h2>
-
-                <p className="text-xs text-slate-500">
-                  {documents.length} uploaded
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                aria-label="Upload a document"
-                className="rounded-md p-2 text-slate-600 transition hover:bg-slate-200"
-              >
-                <Plus size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {documents.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center">
-                  <FileText
-                    className="mx-auto mb-2 text-slate-400"
-                    size={28}
-                  />
-
-                  <p className="text-sm font-medium text-slate-700">
-                    No PDFs uploaded
-                  </p>
+        <div className="grid flex-1 grid-cols-1 md:grid-cols-[320px_1fr]">
+          <aside className="border-b border-slate-200 bg-slate-50 md:border-b-0 md:border-r">
+            <div className="border-b border-slate-200 px-5 py-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-semibold text-slate-900">
+                    Your documents
+                  </h2>
 
                   <p className="mt-1 text-xs text-slate-500">
-                    Upload your first document to begin.
+                    {documents.length === 1
+                      ? "1 PDF uploaded"
+                      : `${documents.length} PDFs uploaded`}
                   </p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Upload another document"
+                  className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900"
+                >
+                  <Plus size={19} />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3 p-4">
+              {documents.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center transition hover:border-slate-500 hover:bg-slate-50"
+                >
+                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                    <FileText size={22} />
+                  </div>
+
+                  <p className="mt-3 text-sm font-semibold text-slate-800">
+                    Upload your first PDF
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Choose a text-based document up to 10 MB.
+                  </p>
+                </button>
               ) : (
                 documents.map((document) => {
                   const isSelected =
@@ -475,74 +521,94 @@ export default function Home() {
                   return (
                     <div
                       key={document.id}
-                      className={`group flex w-full items-center gap-3 rounded-xl border p-3 transition ${
+                      className={`group rounded-2xl border p-3 transition ${
                         isSelected
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
+                          ? "border-slate-900 bg-slate-900 shadow-md"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                       }`}
                     >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleSelectDocument(document.id)
-                        }
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                      >
-                        {document.status === "processing" ? (
-                          <LoaderCircle
-                            size={20}
-                            className="shrink-0 animate-spin"
-                          />
-                        ) : (
-                          <FileText
-                            size={20}
-                            className={`shrink-0 ${
+                      <div className="flex items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleSelectDocument(document.id)
+                          }
+                          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                        >
+                          <div
+                            className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
                               isSelected
-                                ? "text-white"
-                                : "text-slate-500"
-                            }`}
-                          />
-                        )}
-
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold">
-                            {document.name}
-                          </p>
-
-                          <p
-                            className={`text-xs ${
-                              isSelected
-                                ? "text-slate-300"
-                                : "text-slate-500"
+                                ? "bg-white/10 text-white"
+                                : "bg-slate-100 text-slate-500"
                             }`}
                           >
-                            {document.status === "processing"
-                              ? "Extracting text..."
-                              : document.status === "error"
-                                ? "Processing failed"
-                                : `${document.size}${
-                                    document.pages > 0
-                                      ? ` • ${document.pages} pages`
-                                      : ""
-                                  }`}
-                          </p>
-                        </div>
-                      </button>
+                            {document.status === "processing" ? (
+                              <LoaderCircle
+                                size={19}
+                                className="animate-spin"
+                              />
+                            ) : (
+                              <FileText size={19} />
+                            )}
+                          </div>
 
-                      <button
-                        type="button"
-                        aria-label={`Delete ${document.name}`}
-                        onClick={() =>
-                          handleDeleteDocument(document.id)
-                        }
-                        className={`shrink-0 rounded-md p-1.5 transition ${
-                          isSelected
-                            ? "text-slate-300 hover:bg-slate-700 hover:text-white"
-                            : "text-slate-400 hover:bg-red-50 hover:text-red-600"
-                        }`}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className={`truncate text-sm font-semibold ${
+                                isSelected
+                                  ? "text-white"
+                                  : "text-slate-900"
+                              }`}
+                            >
+                              {document.name}
+                            </p>
+
+                            <div
+                              className={`mt-1 flex flex-wrap items-center gap-2 text-xs ${
+                                isSelected
+                                  ? "text-slate-300"
+                                  : "text-slate-500"
+                              }`}
+                            >
+                              <span>{document.size}</span>
+
+                              {document.pages > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span>{document.pages} pages</span>
+                                </>
+                              )}
+                            </div>
+
+                            <div className="mt-2">
+                              {isSelected &&
+                              document.status === "ready" ? (
+                                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-300">
+                                  <CheckCircle2 size={13} />
+                                  Ready
+                                </span>
+                              ) : (
+                                renderStatus(document)
+                              )}
+                            </div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          aria-label={`Delete ${document.name}`}
+                          onClick={() =>
+                            handleDeleteDocument(document.id)
+                          }
+                          className={`rounded-lg p-2 transition ${
+                            isSelected
+                              ? "text-slate-400 hover:bg-white/10 hover:text-white"
+                              : "text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          }`}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
                   );
                 })
@@ -550,148 +616,228 @@ export default function Home() {
             </div>
           </aside>
 
-          <section className="flex min-h-[600px] flex-col">
-            <div className="border-b border-slate-200 px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Current document
-              </p>
+          <section className="flex min-h-[650px] flex-col bg-white">
+            <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-7">
+              {selectedDocument ? (
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                      <FileText size={21} />
+                    </div>
 
-              <h2 className="mt-1 font-semibold text-slate-900">
-                {selectedDocument?.name ??
-                  "Upload or select a document"}
-              </h2>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Chatting with
+                      </p>
 
-              {selectedDocument && (
-                <p className="mt-1 text-xs text-slate-500">
-                  {selectedDocument.status === "processing"
-                    ? "Extracting PDF text..."
-                    : selectedDocument.status === "error"
-                      ? "PDF processing failed"
-                      : `${selectedDocument.pages} pages ready`}
-                </p>
+                      <h2 className="mt-1 truncate font-semibold text-slate-950">
+                        {selectedDocument.name}
+                      </h2>
+
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span>{selectedDocument.size}</span>
+
+                        {selectedDocument.pages > 0 && (
+                          <>
+                            <span>•</span>
+                            <span>
+                              {selectedDocument.pages} pages
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+                    {renderStatus(selectedDocument)}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                    Current document
+                  </p>
+
+                  <h2 className="mt-1 font-semibold text-slate-900">
+                    No PDF selected
+                  </h2>
+                </div>
               )}
             </div>
 
-            <div className="flex-1 space-y-5 overflow-y-auto p-5 sm:p-8">
-  {messages.length === 0 && !isAnswering ? (
-    <div className="flex h-full min-h-72 items-center justify-center">
-      <div className="max-w-sm text-center">
-        <FileText
-          size={42}
-          className="mx-auto text-slate-300"
-        />
+            <div className="flex-1 overflow-y-auto bg-gradient-to-b from-white to-slate-50 px-4 py-6 sm:px-8">
+              {messages.length === 0 && !isAnswering ? (
+                <div className="flex min-h-full items-center justify-center">
+                  <div className="max-w-md text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg">
+                      <Bot size={29} />
+                    </div>
 
-        <h3 className="mt-4 font-semibold text-slate-800">
-          Upload a PDF to begin
-        </h3>
+                    <h3 className="mt-5 text-xl font-bold text-slate-950">
+                      Chat with any PDF
+                    </h3>
 
-        <p className="mt-2 text-sm text-slate-500">
-          Text-based PDFs up to 10 MB are supported.
-        </p>
-      </div>
-    </div>
-  ) : (
-    <>
-      {messages.map((message) => (
-        <div
-          key={message.id}
-          className={`flex ${
-            message.role === "user"
-              ? "justify-end"
-              : "justify-start"
-          }`}
-        >
-          <div
-            className={`max-w-2xl rounded-2xl px-4 py-3 text-sm leading-6 ${
-              message.role === "user"
-                ? "bg-slate-900 text-white"
-                : "border border-slate-200 bg-slate-50 text-slate-800"
-            }`}
-          >
-            <p>{message.content}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Upload a document and ask questions about
+                      names, experience, summaries, key points,
+                      requirements, and more.
+                    </p>
 
-            {message.sources &&
-              message.sources.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
-                  <span className="text-xs font-semibold text-slate-500">
-                    Sources:
-                  </span>
-
-                  {message.sources.map((pageNumber) => (
-                    <span
-                      key={pageNumber}
-                      className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-600"
+                    <button
+                      type="button"
+                      onClick={() =>
+                        fileInputRef.current?.click()
+                      }
+                      className="mt-6 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
                     >
-                      Page {pageNumber}
-                    </span>
+                      <Upload size={17} />
+                      Choose a PDF
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mx-auto max-w-4xl space-y-6">
+                  {messages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`flex gap-3 ${
+                        message.role === "user"
+                          ? "justify-end"
+                          : "justify-start"
+                      }`}
+                    >
+                      {message.role === "assistant" && (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
+                          <Bot size={17} />
+                        </div>
+                      )}
+
+                      <div
+                        className={`max-w-[85%] sm:max-w-2xl ${
+                          message.role === "user"
+                            ? "items-end"
+                            : "items-start"
+                        }`}
+                      >
+                        <div
+                          className={`rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
+                            message.role === "user"
+                              ? "rounded-br-md bg-slate-900 text-white"
+                              : "rounded-bl-md border border-slate-200 bg-white text-slate-800"
+                          }`}
+                        >
+                          <p className="whitespace-pre-wrap">
+                            {message.content}
+                          </p>
+
+                          {message.sources &&
+                            message.sources.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
+                                <span className="text-xs font-semibold text-slate-500">
+                                  Sources
+                                </span>
+
+                                {message.sources.map(
+                                  (pageNumber) => (
+                                    <span
+                                      key={pageNumber}
+                                      className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
+                                    >
+                                      Page {pageNumber}
+                                    </span>
+                                  )
+                                )}
+                              </div>
+                            )}
+                        </div>
+                      </div>
+
+                      {message.role === "user" && (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-700">
+                          <UserRound size={17} />
+                        </div>
+                      )}
+                    </div>
                   ))}
+
+                  {isAnswering && (
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white">
+                        <Bot size={17} />
+                      </div>
+
+                      <div className="rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                        <div className="flex items-center gap-3 text-sm text-slate-600">
+                          <LoaderCircle
+                            size={17}
+                            className="animate-spin"
+                          />
+
+                          <span>
+                            Reading the document and preparing
+                            your answer...
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={messagesEndRef} />
                 </div>
               )}
-          </div>
-        </div>
-      ))}
+            </div>
 
-      {isAnswering && (
-        <div className="flex justify-start">
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <LoaderCircle
-              size={18}
-              className="animate-spin"
-            />
-
-            <span>
-              Reading the PDF and preparing an answer...
-            </span>
-          </div>
-        </div>
-      )}
-    </>
-  )}
-</div>
-           
             <form
               onSubmit={handleQuestionSubmit}
-              className="border-t border-slate-200 bg-white p-4 sm:p-5"
+              className="border-t border-slate-200 bg-white px-4 py-4 sm:px-7 sm:py-5"
             >
-              <div className="flex items-end gap-3 rounded-xl border border-slate-300 bg-white p-2 focus-within:border-slate-700">
-                <textarea
-  value={question}
-  onChange={(event) =>
-    setQuestion(event.target.value)
-  }
-  onKeyDown={handleQuestionKeyDown}
-  placeholder={
-    isAnswering
-      ? "Preparing your answer..."
-      : canAskQuestion
-        ? "Ask a question about this PDF..."
-        : selectedDocument?.status === "processing"
-          ? "Please wait while the PDF is processed..."
-          : "Upload a valid PDF to ask questions..."
-  }
-  rows={1}
-  disabled={!canAskQuestion || isAnswering}
-  className="max-h-32 min-h-11 flex-1 resize-none border-none px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-white"
-/>
+              <div className="mx-auto max-w-4xl">
+                <div className="rounded-2xl border border-slate-300 bg-white p-2 shadow-sm transition focus-within:border-slate-700 focus-within:shadow-md">
+                  <div className="flex items-end gap-2">
+                    <textarea
+                      value={question}
+                      onChange={(event) =>
+                        setQuestion(event.target.value)
+                      }
+                      onKeyDown={handleQuestionKeyDown}
+                      placeholder={
+                        isAnswering
+                          ? "Preparing your answer..."
+                          : canAskQuestion
+                            ? `Ask anything about ${selectedDocument?.name}...`
+                            : selectedDocument?.status ===
+                                "processing"
+                              ? "Please wait while the PDF is being read..."
+                              : "Upload a valid PDF to begin chatting..."
+                      }
+                      rows={1}
+                      disabled={
+                        !canAskQuestion || isAnswering
+                      }
+                      className="max-h-36 min-h-12 flex-1 resize-none border-none bg-transparent px-3 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
+                    />
 
-                <button
-                  type="submit"
-                  disabled={
-                    !question.trim() ||
-                    !canAskQuestion ||
-                    isAnswering
-                  }
-                                    aria-label="Send question"
-                  className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-900 text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  <Send size={18} />
-                </button>
+                    <button
+                      type="submit"
+                      disabled={
+                        !question.trim() ||
+                        !canAskQuestion ||
+                        isAnswering
+                      }
+                      aria-label="Send question"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      <Send size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                <p className="mt-2 text-center text-xs text-slate-400">
+                  Answers are generated only from the selected
+                  PDF.
+                </p>
               </div>
-
-              <p className="mt-2 text-center text-xs text-slate-400">
-                Answers will be generated from the selected
-                PDF.
-              </p>
             </form>
           </section>
         </div>
