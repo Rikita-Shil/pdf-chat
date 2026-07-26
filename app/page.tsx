@@ -185,18 +185,30 @@ export default function Home() {
           );
         }
 
-            setDocuments((currentDocuments) =>
-              currentDocuments.map((document) =>
-                document.id === documentId
-                  ? {
-                      ...document,
-                      pages: result.pageCount,
-                      text: result.text,
-                      status: "ready",
-                    }
-                  : document
-              )
-            );
+          const extractedText = result.text;
+const pageCount = result.pageCount;
+const characterCount = result.characterCount;
+
+setDocuments((currentDocuments) =>
+  currentDocuments.map((document) =>
+    document.id === documentId
+      ? {
+          ...document,
+          pages: pageCount,
+          text: extractedText,
+          status: "ready" as const,
+        }
+      : document
+  )
+);
+
+setMessages([
+  {
+    id: Date.now(),
+    role: "assistant",
+    content: `🎉 ${file.name} is ready! I extracted ${characterCount.toLocaleString()} characters from ${pageCount} pages. Ask me anything about this document.`,
+  },
+]);
 
         setMessages([
           {
@@ -406,7 +418,7 @@ export default function Home() {
       return (
         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
           <LoaderCircle size={13} className="animate-spin" />
-          Reading
+          📖 Reading your PDF...
         </span>
       );
     }
@@ -415,7 +427,7 @@ export default function Home() {
       return (
         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600">
           <AlertCircle size={13} />
-          Failed
+          😢 Couldn't read it
         </span>
       );
     }
@@ -423,13 +435,17 @@ export default function Home() {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
         <CheckCircle2 size={13} />
-        Ready
+        🎉 Ready to chat!
       </span>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 p-0 sm:p-5">
+    <main className="min-h-screen from-indigo-100
+
+via-white
+
+to-cyan-100-slate-950 p-0 sm:p-5">
       <section className="mx-auto flex min-h-screen max-w-[1500px] flex-col overflow-hidden bg-white sm:min-h-[calc(100vh-40px)] sm:rounded-3xl sm:border sm:border-slate-800 sm:shadow-2xl">
         <input
           ref={fileInputRef}
@@ -448,11 +464,11 @@ export default function Home() {
 
             <div>
               <h1 className="text-lg font-bold text-slate-950 sm:text-xl">
-                PDF Chat AI
+                PDF Chats
               </h1>
 
               <p className="text-xs text-slate-500 sm:text-sm">
-                Chat naturally with your documents
+                Your intelligent PDF companion 🤖
               </p>
             </div>
           </div>
@@ -506,7 +522,14 @@ export default function Home() {
                   </div>
 
                   <p className="mt-3 text-sm font-semibold text-slate-800">
-                    Upload your first PDF
+                     📄 Drop your PDF here
+
+                    or click to browse
+
+                    ✨ Supports resumes
+                    📚 Books
+                    📑 Assignments
+                    📊 Reports
                   </p>
 
                   <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -672,16 +695,27 @@ export default function Home() {
                   <div className="max-w-md text-center">
                     <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg">
                       <Bot size={29} />
+                              
                     </div>
 
                     <h3 className="mt-5 text-xl font-bold text-slate-950">
-                      Chat with any PDF
+                      👋 Welcome!
+
+                            Let's make reading easier.
+
+                            Upload any PDF and chat with it naturally.
                     </h3>
 
                     <p className="mt-2 text-sm leading-6 text-slate-500">
-                      Upload a document and ask questions about
-                      names, experience, summaries, key points,
-                      requirements, and more.
+                     💬 Try asking
+
+"What are the key skills?"
+
+"Summarise this PDF."
+
+"What experience does this person have?"
+
+"What are the important dates?"
                     </p>
 
                     <button
@@ -775,8 +809,13 @@ export default function Home() {
                           />
 
                           <span>
-                            Reading the document and preparing
-                            your answer...
+                            🤖 Nova is thinking...
+
+                          📖 Reading your PDF
+
+                          🧠 Understanding context
+
+                          ✨ Writing your answer...
                           </span>
                         </div>
                       </div>
