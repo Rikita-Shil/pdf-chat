@@ -89,9 +89,8 @@ If the answer cannot be found inside the PDF, Nova will respond that the informa
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/pdf-chat.git
-```
-
+git clone https://github.com/Rikita-Shil/pdf-chat.git
+...
 ---
 
 ### 2. Open the project
