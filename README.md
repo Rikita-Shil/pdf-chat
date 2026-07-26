@@ -90,7 +90,9 @@ If the answer cannot be found inside the PDF, Nova will respond that the informa
 
 ```bash
 git clone https://github.com/Rikita-Shil/pdf-chat.git
-...
+
+```
+
 ---
 
 ### 2. Open the project
