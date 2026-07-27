@@ -56,7 +56,7 @@ package.json
 ---
 ## 🚀 Live Demo
 
-**Try Nova here:** https://your-app-name.vercel.app
+**Try Nova here:** (https://pdf-chat-ten-tau.vercel.app)
 
 
 ## ⚙️ How It Works
