@@ -54,6 +54,10 @@ package.json
 ```
 
 ---
+## 🚀 Live Demo
+
+**Try Nova here:** https://your-app-name.vercel.app
+
 
 ## ⚙️ How It Works
 
