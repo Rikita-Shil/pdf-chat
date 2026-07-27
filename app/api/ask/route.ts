@@ -80,6 +80,7 @@ ${documentName}
 PDF TEXT:
 ${documentText}
 
+
 USER QUESTION:
 ${question}
     `.trim();

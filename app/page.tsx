@@ -761,9 +761,58 @@ to-cyan-100-slate-950 p-0 sm:p-5">
                               : "rounded-bl-md border border-slate-200 bg-white text-slate-800"
                           }`}
                         >
-                          <p className="whitespace-pre-wrap">
-                            {message.content}
-                          </p>
+                          <div className="whitespace-pre-wrap">
+  {message.content.split("\n").map((line, index) => {
+    const headings = [
+      "Background",
+      "Experience",
+      "Skills",
+      "Education",
+      "Projects",
+      "Summary",
+      "Approach",
+      "Interests",
+      "Achievements",
+      "Responsibilities",
+      "Key Points",
+      "Technologies",
+    ];
+
+    const trimmed = line.trim();
+
+    if (headings.includes(trimmed)) {
+      return (
+        <h3
+          key={index}
+          className={`mt-4 mb-2 text-base font-bold ${
+            message.role === "user"
+              ? "text-white"
+              : "text-slate-900"
+          }`}
+        >
+          {trimmed}
+        </h3>
+      );
+    }
+
+    if (trimmed === "") {
+      return <br key={index} />;
+    }
+
+    return (
+      <p
+        key={index}
+        className={`leading-7 ${
+          message.role === "user"
+            ? "text-white"
+            : "text-slate-800"
+        }`}
+      >
+        {line}
+      </p>
+    );
+  })}
+</div>
 
                           {message.sources &&
                             message.sources.length > 0 && (
