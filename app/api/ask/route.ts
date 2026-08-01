@@ -1,21 +1,50 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { GoogleGenAI } from "@google/genai";
-
-
+import {
+  APP_NAME,
+  novaRunner,
+  sessionService,
+} from "@/lib/nova-agent";
 
 type AskRequestBody = {
   question?: unknown;
   documentText?: unknown;
   documentName?: unknown;
+  sessionId?: unknown;
+  userId?: unknown;
 };
+
+function readTextFromEvent(event: unknown): string {
+  if (
+    !event ||
+    typeof event !== "object" ||
+    !("content" in event)
+  ) {
+    return "";
+  }
+
+  const content = (
+    event as {
+      content?: {
+        parts?: Array<{
+          text?: string;
+        }>;
+      };
+    }
+  ).content;
+
+  return (
+    content?.parts
+      ?.map((part) => part.text ?? "")
+      .join("")
+      .trim() ?? ""
+  );
+}
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
+    if (!process.env.GEMINI_API_KEY) {
       return Response.json(
         {
           error:
@@ -25,7 +54,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as AskRequestBody;
+    const body =
+      (await request.json()) as AskRequestBody;
 
     const question =
       typeof body.question === "string"
@@ -42,60 +72,110 @@ export async function POST(request: Request) {
         ? body.documentName.trim()
         : "Uploaded PDF";
 
+    const sessionId =
+      typeof body.sessionId === "string"
+        ? body.sessionId.trim()
+        : "";
+
+    const userId =
+      typeof body.userId === "string"
+        ? body.userId.trim()
+        : "";
+
     if (!question) {
       return Response.json(
-        { error: "Please provide a question." },
+        {
+          error: "Please provide a question.",
+        },
         { status: 400 }
       );
     }
 
     if (!documentText) {
       return Response.json(
-        { error: "No extracted PDF text was provided." },
+        {
+          error:
+            "No extracted PDF text was provided.",
+        },
         { status: 400 }
       );
     }
 
-    const ai = new GoogleGenAI({
-      apiKey,
-    });
+    if (!sessionId || !userId) {
+      return Response.json(
+        {
+          error:
+            "A session ID and anonymous user ID are required.",
+        },
+        { status: 400 }
+      );
+    }
 
-    const prompt = `
-You are a document question-answering assistant.
+    /*
+     * Try to retrieve the existing conversation.
+     */
+    let session =
+      await sessionService.getSession({
+        appName: APP_NAME,
+        userId,
+        sessionId,
+      });
 
-Answer the user's question using only the supplied PDF text.
+    /*
+     * Create it when this is the first message.
+     */
+    if (!session) {
+      session =
+        await sessionService.createSession({
+          appName: APP_NAME,
+          userId,
+          sessionId,
+          state: {
+            documentName,
+          },
+        });
+    }
 
-Rules:
-1. Do not use outside knowledge.
-2. Do not invent missing information.
-3. If the answer is not present, say:
-   "I could not find this information in the document."
-4. Keep the answer clear and concise.
-5. Refer to the document as "${documentName}" when useful.
-6. Do not claim a page number unless it is clearly included in the supplied text.
-
-DOCUMENT NAME:
+    const message = `
+CURRENT DOCUMENT:
 ${documentName}
 
-PDF TEXT:
+CURRENT PDF TEXT:
 ${documentText}
-
 
 USER QUESTION:
 ${question}
     `.trim();
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
+    const events = novaRunner.runAsync({
+      userId,
+      sessionId: session.id,
+      newMessage: {
+        role: "user",
+        parts: [
+          {
+            text: message,
+          },
+        ],
+      },
     });
 
-    const answer = response.text?.trim();
+    let answer = "";
+
+    for await (const event of events) {
+      const eventText =
+        readTextFromEvent(event);
+
+      if (eventText) {
+        answer = eventText;
+      }
+    }
 
     if (!answer) {
       return Response.json(
         {
-          error: "Gemini did not return an answer.",
+          error:
+            "Nova did not return an answer.",
         },
         { status: 500 }
       );
@@ -103,9 +183,13 @@ ${question}
 
     return Response.json({
       answer,
+      sessionId: session.id,
     });
   } catch (error) {
-    console.error("Question answering error:", error);
+    console.error(
+      "Nova ADK question-answering error:",
+      error
+    );
 
     const message =
       error instanceof Error

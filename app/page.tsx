@@ -74,6 +74,30 @@ export default function Home() {
     (document) => document.id === selectedDocumentId
   );
 
+  const [anonymousUserId, setAnonymousUserId] =
+  useState("");
+
+const [sessionId, setSessionId] =
+  useState("");
+
+  useEffect(() => {
+  let storedUserId =
+    localStorage.getItem(
+      "nova-anonymous-user-id"
+    );
+
+  if (!storedUserId) {
+    storedUserId = crypto.randomUUID();
+
+    localStorage.setItem(
+      "nova-anonymous-user-id",
+      storedUserId
+    );
+  }
+
+  setAnonymousUserId(storedUserId);
+  setSessionId(crypto.randomUUID());
+}, []);
   const canAskQuestion =
     selectedDocument?.status === "ready";
 
@@ -253,14 +277,16 @@ setMessages([
     const trimmedQuestion = question.trim();
 
     if (
-      !trimmedQuestion ||
-      !selectedDocument ||
-      selectedDocument.status !== "ready" ||
-      !selectedDocument.text ||
-      isAnswering
-    ) {
-      return;
-    }
+  !trimmedQuestion ||
+  !selectedDocument ||
+  selectedDocument.status !== "ready" ||
+  !selectedDocument.text ||
+  !anonymousUserId ||
+  !sessionId ||
+  isAnswering
+) {
+  return;
+}
 
     const userMessage: Message = {
       id: Date.now(),
@@ -283,10 +309,12 @@ setMessages([
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          question: trimmedQuestion,
-          documentText: selectedDocument.text,
-          documentName: selectedDocument.name,
-        }),
+  question: trimmedQuestion,
+  documentText: selectedDocument.text,
+  documentName: selectedDocument.name,
+  userId: anonymousUserId,
+  sessionId,
+}),
       });
 
       const result =
