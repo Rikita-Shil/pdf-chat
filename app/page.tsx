@@ -6,19 +6,23 @@ import {
   CheckCircle2,
   FileText,
   LoaderCircle,
-  Plus,
+  
   Send,
   Sparkles,
-  Trash2,
+
   Upload,
   UserRound,
-} from "lucide-react";
+} 
+from "lucide-react";
 import type {
   ChangeEvent,
   FormEvent,
   KeyboardEvent,
 } from "react";
 import { useEffect, useRef, useState } from "react";
+import DocumentSidebar from "./components/DocumentSidebar";
+import MessageBubble from "./components/MessageBubble";
+
 
 type DocumentStatus = "processing" | "ready" | "error";
 
@@ -50,9 +54,13 @@ type AskPdfResponse = {
   answer?: string;
   error?: string;
 };
+type ChatThread = {
+  sessionId: string;
+  messages: Message[];
+};
 
 const initialDocuments: PdfDocument[] = [];
-const initialMessages: Message[] = [];
+
 
 export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,8 +72,9 @@ export default function Home() {
   const [selectedDocumentId, setSelectedDocumentId] =
     useState<number | null>(null);
 
-  const [messages, setMessages] =
-    useState<Message[]>(initialMessages);
+  const [chatThreads, setChatThreads] = useState<
+  Record<number, ChatThread>
+>({});
 
   const [question, setQuestion] = useState("");
   const [isAnswering, setIsAnswering] = useState(false);
@@ -73,18 +82,22 @@ export default function Home() {
   const selectedDocument = documents.find(
     (document) => document.id === selectedDocumentId
   );
+  const selectedThread =
+  selectedDocumentId !== null
+    ? chatThreads[selectedDocumentId]
+    : undefined;
+
+const messages = selectedThread?.messages ?? [];
 
   const [anonymousUserId, setAnonymousUserId] =
   useState("");
 
-const [sessionId, setSessionId] =
-  useState("");
+
 
   useEffect(() => {
-  let storedUserId =
-    localStorage.getItem(
-      "nova-anonymous-user-id"
-    );
+  let storedUserId = localStorage.getItem(
+    "nova-anonymous-user-id"
+  );
 
   if (!storedUserId) {
     storedUserId = crypto.randomUUID();
@@ -96,7 +109,6 @@ const [sessionId, setSessionId] =
   }
 
   setAnonymousUserId(storedUserId);
-  setSessionId(crypto.randomUUID());
 }, []);
   const canAskQuestion =
     selectedDocument?.status === "ready";
@@ -118,6 +130,44 @@ const [sessionId, setSessionId] =
 
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
+  function replaceDocumentMessages(
+  documentId: number,
+  newMessages: Message[]
+) {
+  setChatThreads((currentThreads) => ({
+    ...currentThreads,
+    [documentId]: {
+      sessionId:
+        currentThreads[documentId]?.sessionId ??
+        crypto.randomUUID(),
+      messages: newMessages,
+    },
+  }));
+}
+
+function appendDocumentMessage(
+  documentId: number,
+  newMessage: Message
+) {
+  setChatThreads((currentThreads) => {
+    const currentThread =
+      currentThreads[documentId] ?? {
+        sessionId: crypto.randomUUID(),
+        messages: [],
+      };
+
+    return {
+      ...currentThreads,
+      [documentId]: {
+        ...currentThread,
+        messages: [
+          ...currentThread.messages,
+          newMessage,
+        ],
+      },
+    };
+  });
+}
 
   async function handleFileSelection(
     event: ChangeEvent<HTMLInputElement>
@@ -172,14 +222,21 @@ const [sessionId, setSessionId] =
       ]);
 
       setSelectedDocumentId(documentId);
+      setChatThreads((currentThreads) => ({
+  ...currentThreads,
+  [documentId]: {
+    sessionId: crypto.randomUUID(),
+    messages: [
+      {
+        id: Date.now(),
+        role: "assistant",
+        content: `I’m reading ${file.name} and extracting its text now.`,
+      },
+    ],
+  },
+}));
 
-      setMessages([
-        {
-          id: Date.now(),
-          role: "assistant",
-          content: `I’m reading ${file.name} and extracting its text now.`,
-        },
-      ]);
+   
 
       try {
         const formData = new FormData();
@@ -226,7 +283,7 @@ setDocuments((currentDocuments) =>
   )
 );
 
-setMessages([
+replaceDocumentMessages(documentId, [
   {
     id: Date.now(),
     role: "assistant",
@@ -234,13 +291,7 @@ setMessages([
   },
 ]);
 
-        setMessages([
-          {
-            id: Date.now(),
-            role: "assistant",
-            content: `${file.name} is ready. I extracted ${result.characterCount.toLocaleString()} characters from ${result.pageCount} pages. Ask me anything about this document.`,
-          },
-        ]);
+        
       } catch (error) {
         const errorMessage =
           error instanceof Error
@@ -258,13 +309,13 @@ setMessages([
           )
         );
 
-        setMessages([
-          {
-            id: Date.now(),
-            role: "assistant",
-            content: errorMessage,
-          },
-        ]);
+        replaceDocumentMessages(documentId, [
+  {
+    id: Date.now(),
+    role: "assistant",
+    content: errorMessage,
+  },
+]);
       }
     }
   }
@@ -276,13 +327,13 @@ setMessages([
 
     const trimmedQuestion = question.trim();
 
-    if (
+  if (
   !trimmedQuestion ||
   !selectedDocument ||
+  !selectedThread ||
   selectedDocument.status !== "ready" ||
   !selectedDocument.text ||
   !anonymousUserId ||
-  !sessionId ||
   isAnswering
 ) {
   return;
@@ -294,11 +345,10 @@ setMessages([
       content: trimmedQuestion,
     };
 
-    setMessages((currentMessages) => [
-      ...currentMessages,
-      userMessage,
-    ]);
-
+    appendDocumentMessage(
+  selectedDocument.id,
+  userMessage
+);
     setQuestion("");
     setIsAnswering(true);
 
@@ -313,7 +363,7 @@ setMessages([
   documentText: selectedDocument.text,
   documentName: selectedDocument.name,
   userId: anonymousUserId,
-  sessionId,
+  sessionId: selectedThread.sessionId,
 }),
       });
 
@@ -337,24 +387,21 @@ setMessages([
         content: result.answer,
       };
 
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        assistantMessage,
-      ]);
+    appendDocumentMessage(
+  selectedDocument.id,
+  assistantMessage
+);
     } catch (error) {
       const errorMessage =
         error instanceof Error
           ? error.message
           : "The question could not be answered.";
 
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        {
-          id: Date.now() + 1,
-          role: "assistant",
-          content: errorMessage,
-        },
-      ]);
+      appendDocumentMessage(selectedDocument.id, {
+  id: Date.now() + 1,
+  role: "assistant",
+  content: errorMessage,
+});
     } finally {
       setIsAnswering(false);
     }
@@ -370,77 +417,36 @@ setMessages([
   }
 
   function handleSelectDocument(documentId: number) {
-    const document = documents.find(
-      (item) => item.id === documentId
-    );
+  const document = documents.find(
+    (item) => item.id === documentId
+  );
 
-    if (!document) {
-      return;
-    }
-
-    setSelectedDocumentId(documentId);
-
-    if (document.status === "processing") {
-      setMessages([
-        {
-          id: Date.now(),
-          role: "assistant",
-          content: `I’m still extracting text from ${document.name}.`,
-        },
-      ]);
-      return;
-    }
-
-    if (document.status === "error") {
-      setMessages([
-        {
-          id: Date.now(),
-          role: "assistant",
-          content:
-            "This PDF could not be processed. Delete it and upload it again.",
-        },
-      ]);
-      return;
-    }
-
-    setMessages([
-      {
-        id: Date.now(),
-        role: "assistant",
-        content: `${document.name} is selected and ready. What would you like to know?`,
-      },
-    ]);
+  if (!document) {
+    return;
   }
+
+  setSelectedDocumentId(documentId);
+}
 
   function handleDeleteDocument(documentId: number) {
-    const updatedDocuments = documents.filter(
-      (document) => document.id !== documentId
-    );
+  const updatedDocuments = documents.filter(
+    (document) => document.id !== documentId
+  );
 
-    setDocuments(updatedDocuments);
+  setDocuments(updatedDocuments);
 
-    if (selectedDocumentId === documentId) {
-      const nextDocument = updatedDocuments[0];
+  setChatThreads((currentThreads) => {
+    const updatedThreads = { ...currentThreads };
+    delete updatedThreads[documentId];
+    return updatedThreads;
+  });
 
-      setSelectedDocumentId(nextDocument?.id ?? null);
+  if (selectedDocumentId === documentId) {
+    const nextDocument = updatedDocuments[0];
 
-      if (nextDocument) {
-        setMessages([
-          {
-            id: Date.now(),
-            role: "assistant",
-            content:
-              nextDocument.status === "ready"
-                ? `${nextDocument.name} is now selected.`
-                : `Selected ${nextDocument.name}.`,
-          },
-        ]);
-      } else {
-        setMessages([]);
-      }
-    }
+    setSelectedDocumentId(nextDocument?.id ?? null);
   }
-
+}
   function renderStatus(document: PdfDocument) {
     if (document.status === "processing") {
       return (
@@ -469,11 +475,7 @@ setMessages([
   }
 
   return (
-    <main className="min-h-screen from-indigo-100
-
-via-white
-
-to-cyan-100-slate-950 p-0 sm:p-5">
+    <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-white to-cyan-100 p-0 sm:p-5">
       <section className="mx-auto flex min-h-screen max-w-[1500px] flex-col overflow-hidden bg-white sm:min-h-[calc(100vh-40px)] sm:rounded-3xl sm:border sm:border-slate-800 sm:shadow-2xl">
         <input
           ref={fileInputRef}
@@ -512,160 +514,15 @@ to-cyan-100-slate-950 p-0 sm:p-5">
         </header>
 
         <div className="grid flex-1 grid-cols-1 md:grid-cols-[320px_1fr]">
-          <aside className="border-b border-slate-200 bg-slate-50 md:border-b-0 md:border-r">
-            <div className="border-b border-slate-200 px-5 py-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-semibold text-slate-900">
-                    Your documents
-                  </h2>
-
-                  <p className="mt-1 text-xs text-slate-500">
-                    {documents.length === 1
-                      ? "1 PDF uploaded"
-                      : `${documents.length} PDFs uploaded`}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="Upload another document"
-                  className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900"
-                >
-                  <Plus size={19} />
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3 p-4">
-              {documents.length === 0 ? (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center transition hover:border-slate-500 hover:bg-slate-50"
-                >
-                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
-                    <FileText size={22} />
-                  </div>
-
-                  <p className="mt-3 text-sm font-semibold text-slate-800">
-                     📄 Drop your PDF here
-
-                    or click to browse
-
-                    ✨ Supports resumes
-                    📚 Books
-                    📑 Assignments
-                    📊 Reports
-                  </p>
-
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Choose a text-based document up to 10 MB.
-                  </p>
-                </button>
-              ) : (
-                documents.map((document) => {
-                  const isSelected =
-                    document.id === selectedDocumentId;
-
-                  return (
-                    <div
-                      key={document.id}
-                      className={`group rounded-2xl border p-3 transition ${
-                        isSelected
-                          ? "border-slate-900 bg-slate-900 shadow-md"
-                          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleSelectDocument(document.id)
-                          }
-                          className="flex min-w-0 flex-1 items-start gap-3 text-left"
-                        >
-                          <div
-                            className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                              isSelected
-                                ? "bg-white/10 text-white"
-                                : "bg-slate-100 text-slate-500"
-                            }`}
-                          >
-                            {document.status === "processing" ? (
-                              <LoaderCircle
-                                size={19}
-                                className="animate-spin"
-                              />
-                            ) : (
-                              <FileText size={19} />
-                            )}
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <p
-                              className={`truncate text-sm font-semibold ${
-                                isSelected
-                                  ? "text-white"
-                                  : "text-slate-900"
-                              }`}
-                            >
-                              {document.name}
-                            </p>
-
-                            <div
-                              className={`mt-1 flex flex-wrap items-center gap-2 text-xs ${
-                                isSelected
-                                  ? "text-slate-300"
-                                  : "text-slate-500"
-                              }`}
-                            >
-                              <span>{document.size}</span>
-
-                              {document.pages > 0 && (
-                                <>
-                                  <span>•</span>
-                                  <span>{document.pages} pages</span>
-                                </>
-                              )}
-                            </div>
-
-                            <div className="mt-2">
-                              {isSelected &&
-                              document.status === "ready" ? (
-                                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-300">
-                                  <CheckCircle2 size={13} />
-                                  Ready
-                                </span>
-                              ) : (
-                                renderStatus(document)
-                              )}
-                            </div>
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          aria-label={`Delete ${document.name}`}
-                          onClick={() =>
-                            handleDeleteDocument(document.id)
-                          }
-                          className={`rounded-lg p-2 transition ${
-                            isSelected
-                              ? "text-slate-400 hover:bg-white/10 hover:text-white"
-                              : "text-slate-400 hover:bg-red-50 hover:text-red-600"
-                          }`}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </aside>
+<DocumentSidebar
+  documents={documents}
+  selectedDocumentId={selectedDocumentId}
+  onUploadClick={() =>
+    fileInputRef.current?.click()
+  }
+  onSelectDocument={handleSelectDocument}
+  onDeleteDocument={handleDeleteDocument}
+/>
 
           <section className="flex min-h-[650px] flex-col bg-white">
             <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-7">
@@ -761,116 +618,11 @@ to-cyan-100-slate-950 p-0 sm:p-5">
               ) : (
                 <div className="mx-auto max-w-4xl space-y-6">
                   {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex gap-3 ${
-                        message.role === "user"
-                          ? "justify-end"
-                          : "justify-start"
-                      }`}
-                    >
-                      {message.role === "assistant" && (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
-                          <Bot size={17} />
-                        </div>
-                      )}
-
-                      <div
-                        className={`max-w-[85%] sm:max-w-2xl ${
-                          message.role === "user"
-                            ? "items-end"
-                            : "items-start"
-                        }`}
-                      >
-                        <div
-                          className={`rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
-                            message.role === "user"
-                              ? "rounded-br-md bg-slate-900 text-white"
-                              : "rounded-bl-md border border-slate-200 bg-white text-slate-800"
-                          }`}
-                        >
-                          <div className="whitespace-pre-wrap">
-  {message.content.split("\n").map((line, index) => {
-    const headings = [
-      "Background",
-      "Experience",
-      "Skills",
-      "Education",
-      "Projects",
-      "Summary",
-      "Approach",
-      "Interests",
-      "Achievements",
-      "Responsibilities",
-      "Key Points",
-      "Technologies",
-    ];
-
-    const trimmed = line.trim();
-
-    if (headings.includes(trimmed)) {
-      return (
-        <h3
-          key={index}
-          className={`mt-4 mb-2 text-base font-bold ${
-            message.role === "user"
-              ? "text-white"
-              : "text-slate-900"
-          }`}
-        >
-          {trimmed}
-        </h3>
-      );
-    }
-
-    if (trimmed === "") {
-      return <br key={index} />;
-    }
-
-    return (
-      <p
-        key={index}
-        className={`leading-7 ${
-          message.role === "user"
-            ? "text-white"
-            : "text-slate-800"
-        }`}
-      >
-        {line}
-      </p>
-    );
-  })}
-</div>
-
-                          {message.sources &&
-                            message.sources.length > 0 && (
-                              <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
-                                <span className="text-xs font-semibold text-slate-500">
-                                  Sources
-                                </span>
-
-                                {message.sources.map(
-                                  (pageNumber) => (
-                                    <span
-                                      key={pageNumber}
-                                      className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
-                                    >
-                                      Page {pageNumber}
-                                    </span>
-                                  )
-                                )}
-                              </div>
-                            )}
-                        </div>
-                      </div>
-
-                      {message.role === "user" && (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-700">
-                          <UserRound size={17} />
-                        </div>
-                      )}
-                    </div>
-                  ))}
+  <MessageBubble
+    key={message.id}
+    message={message}
+  />
+))}
 
                   {isAnswering && (
                     <div className="flex items-start gap-3">
